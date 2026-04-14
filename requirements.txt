@@ -1,0 +1,18 @@
+# Data Manipulation & Computation
+pandas
+numpy
+scipy
+
+# Visualization
+matplotlib
+
+# Econometrics & Time Series
+statsmodels
+arch
+
+# Machine Learning & Feature Engineering
+scikit-learn
+esig
+
+# Performance Optimization
+numba

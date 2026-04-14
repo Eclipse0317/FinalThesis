@@ -1,0 +1,24 @@
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Data files (NEVER commit raw or sensitive financial data)
+*.csv
+*.dat
+*.out
+*.log
+data/*
+!data/.gitkeep
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
