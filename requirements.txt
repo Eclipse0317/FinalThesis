@@ -13,6 +13,3 @@ arch
 # Machine Learning & Feature Engineering
 scikit-learn
 esig
-
-# Performance Optimization
-numba

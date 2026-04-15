@@ -1,7 +1,7 @@
 import pandas as pd
 
 def load_data(cny_path, cnh_path):
-    """加载并清洗investing.com的周度数据"""
+    """加载并清洗周度数据"""
     cny = pd.read_csv(cny_path)
     cnh = pd.read_csv(cnh_path)
 

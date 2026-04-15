@@ -6,7 +6,7 @@ from scipy import stats as sp_stats
 from statsmodels.tsa.stattools import adfuller, kpss, coint
 
 def run_eda(weekly):
-    """完整的EDA：描述性统计、正态性、平稳性、协整检验"""
+    """EDA：描述性统计、正态性、平稳性、协整检验"""
 
     weekly["r_CNY"] = np.log(weekly["CNY"]).diff()
     weekly["r_CNH"] = np.log(weekly["CNH"]).diff()
