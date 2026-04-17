@@ -34,8 +34,8 @@ from sklearn.model_selection import cross_val_score
 
 def load_data():
     """加载并清洗investing.com的周度数据"""
-    cny = pd.read_csv("USD_CNY_Historical_Weekly_Data.csv")
-    cnh = pd.read_csv("USD_CNH_Historical_Weekly_Data.csv")
+    cny = pd.read_csv("data/USD_CNY_Historical_Weekly_Data.csv")
+    cnh = pd.read_csv("data/USD_CNH_Historical_Weekly_Data.csv")
 
     for df in [cny, cnh]:
         df["Date"] = pd.to_datetime(df["Date"])
