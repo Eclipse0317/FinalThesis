@@ -1,22 +1,36 @@
 import pandas as pd
+import numpy as np
+from src.config import CNY_DATA_FILE, CNH_DATA_FILE
 
-def load_data(cny_path, cnh_path):
-    """加载并清洗周度数据"""
-    cny = pd.read_csv(cny_path)
-    cnh = pd.read_csv(cnh_path)
+def load_data():
+    """
+    Loads weekly USD/CNY and USD/CNH data, aligns them, 
+    and calculates log returns.
+    """
+    # 1. Load raw CSVs
+    cny = pd.read_csv(CNY_DATA_FILE)
+    cnh = pd.read_csv(CNH_DATA_FILE)
 
+    # 2. Clean dates and indices
     for df in [cny, cnh]:
         df["Date"] = pd.to_datetime(df["Date"])
         df.sort_values("Date", inplace=True)
         df.set_index("Date", inplace=True)
         df["Price"] = pd.to_numeric(df["Price"], errors="coerce")
 
+    # 3. Merge into a single DataFrame
     weekly = cny[["Price"]].rename(columns={"Price": "CNY"}).join(
         cnh[["Price"]].rename(columns={"Price": "CNH"}), how="inner"
     )
 
-    print(f"数据范围: {weekly.index[0].date()} 到 {weekly.index[-1].date()}")
-    print(f"观测数: {len(weekly)}")
-    print(f"缺失值: CNY={weekly['CNY'].isna().sum()}, CNH={weekly['CNH'].isna().sum()}")
+    # 4. Feature Engineering: Calculate Log Returns (scaled by 100)
+    weekly["r_CNY"] = np.log(weekly["CNY"]).diff() * 100
+    weekly["r_CNH"] = np.log(weekly["CNH"]).diff() * 100
 
+    # 5. Drop missing values
+    weekly.dropna(inplace=True)
+    weekly = weekly.asfreq('W-SUN').ffill()
+
+    print(f"Data Loaded: {len(weekly)} observations from {weekly.index[0].date()} to {weekly.index[-1].date()}")
+    
     return weekly

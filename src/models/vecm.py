@@ -1,49 +1,59 @@
+import numpy as np
+import pandas as pd
 from statsmodels.tsa.vector_ar.vecm import VECM, select_order, select_coint_rank
-from statsmodels.stats.diagnostic import bds, het_arch
+from .base import BaseHedgeModel
 
-def run_vecm(weekly):
-    """估计VECM并对残差做非线性检验"""
+class VECMHedgeModel(BaseHedgeModel):
+    def __init__(self, window_type='static', window_size=None, refit_step=1, max_lags=12):
+        # Pass the rolling config up to the parent
+        super().__init__(name="VECM", window_type=window_type, window_size=window_size, refit_step=refit_step)
+        self.max_lags = max_lags
+        self.chosen_lag = None
+        self.result = None
+        self.h_vecm = None
 
-    data = weekly[["CNY", "CNH"]].dropna()
+    def fit(self, train_data):
+        # VECM needs raw price levels to find cointegration, not log returns
+        data = train_data[["CNY", "CNH"]].dropna()
+        
+        # 1. Select Lags
+        lag_order = select_order(data, maxlags=self.max_lags, deterministic="ci")
+        self.chosen_lag = max(lag_order.bic, 1)
+        
+        # 2. Fit Model
+        model = VECM(data, k_ar_diff=self.chosen_lag, coint_rank=1, deterministic="ci")
+        self.result = model.fit()
+        
+        # Calculate hedge ratio from residuals
+        cov_matrix = np.cov(self.result.resid[:, 0], self.result.resid[:, 1])
+        self.h_vecm = cov_matrix[0, 1] / cov_matrix[1, 1]
 
-    print("\n" + "="*60)
-    print("VECM模型估计")
-    print("="*60)
+        # Track the ratio over time
+        self.hedge_ratio_history.append(self.h_vecm)
 
-    lag_order = select_order(data, maxlags=12, deterministic="ci")
-    chosen_lag = max(lag_order.bic, 1)
-    print(f"AIC选择: {lag_order.aic}阶, BIC选择: {lag_order.bic}阶, 采用: {chosen_lag}阶")
+        # Print model-specific stats ONLY if static, to avoid terminal spam during rolling windows
+        if self.window_type == 'static':
+            print(f"\n[{self.name}] Fitted with lag={self.chosen_lag}")
+            print(f"[{self.name}] Cointegration vector beta: {self.result.beta.flatten()}")
 
-    rank_test = select_coint_rank(data, det_order=0, k_ar_diff=chosen_lag)
-    print(rank_test.summary())
+    def predict_step(self, test_step_data):
+        r_test_cny = test_step_data["r_CNY"].values
+        r_test_cnh = test_step_data["r_CNH"].values
+        return r_test_cny - self.h_vecm * r_test_cnh
 
-    model = VECM(data, k_ar_diff=chosen_lag, coint_rank=1, deterministic="ci")
-    result = model.fit()
+    def get_residuals(self):
+        """Returns residuals safely packaged as a dictionary for the diagnostics module."""
+        if self.result is None:
+            raise ValueError("Model must be fitted before getting residuals.")
+        
+        return {
+            "CNY": self.result.resid[:, 0],
+            "CNH": self.result.resid[:, 1]
+        }
 
-    alpha = result.alpha
-    beta = result.beta
-    print(f"\n协整向量 beta: {beta.flatten()}")
-    print(f"调整系数 alpha_CNY: {alpha[0,0]:.6f}")
-    print(f"调整系数 alpha_CNH: {alpha[1,0]:.6f}")
-
-    resid = result.resid
-
-    # BDS检验
-    print("\nBDS非线性检验 (VECM残差, epsilon=1.0 std):")
-    for i, name in enumerate(["CNY", "CNH"]):
-        s = (resid[:,i] - resid[:,i].mean()) / resid[:,i].std()
-        bds_stat, bds_pval = bds(s, max_dim=6, epsilon=1.0)
-        print(f"  {name}:")
-        for j, dim in enumerate(range(2, 7)):
-            sig = "***" if bds_pval[j] < 0.01 else "**" if bds_pval[j] < 0.05 else ""
-            print(f"    dim={dim}: stat={bds_stat[j]:.4f}, p={bds_pval[j]:.6f} {sig}")
-
-    # ARCH-LM检验
-    print("\nARCH-LM检验 (VECM残差):")
-    for i, name in enumerate(["CNY", "CNH"]):
-        for nlags in [5, 10]:
-            lm_stat, lm_p, _, _ = het_arch(resid[:,i], nlags=nlags)
-            sig = "***" if lm_p < 0.01 else "**" if lm_p < 0.05 else ""
-            print(f"  {name} lag={nlags}: LM={lm_stat:.4f}, p={lm_p:.6f} {sig}")
-
-    return result
+    def get_hedge_info(self):
+        if self.window_type == 'static':
+            return f"{self.h_vecm:.4f} (lag={self.chosen_lag})"
+        else:
+            avg_h = np.mean(self.hedge_ratio_history)
+            return f"Dynamic (Avg: {avg_h:.4f})"
