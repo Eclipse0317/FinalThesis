@@ -1,3 +1,7 @@
+import warnings
+from statsmodels.tools.sm_exceptions import ValueWarning
+warnings.filterwarnings("ignore", category=ValueWarning)
+
 from src.config import TRAIN_SPLIT, ROBUSTNESS_SPLITS, VECM_MAX_LAGS
 from src.data_loader import load_data
 from src.models.ols import OLSHedgeModel

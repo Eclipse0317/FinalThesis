@@ -28,6 +28,13 @@ class BaseHedgeModel:
         Should return a dictionary or a pandas DataFrame (e.g., {'CNY': array, 'CNH': array})
         """
         raise NotImplementedError("Subclasses must implement get_residuals()")
+    
+    def get_model_attributes(self):
+        """
+        Returns a string containing key fitted parameters 
+        (e.g., DCC a/b values, VECM lags).
+        """
+        raise NotImplementedError("Subclasses must implement get_model_attributes()")
 
     def get_hedge_info(self):
         """
