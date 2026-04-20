@@ -80,34 +80,70 @@ class BaseMGARCHModel(BaseHedgeModel):
         else:
             return f"Static Corr={self.static_corr:.4f}"
 
-    def predict_step(self, test_step_data):
-        # Tell R exactly how many steps ahead we need to forecast for this chunk
-        n_ahead = len(test_step_data)
-        ro.globalenv["n_ahead"] = n_ahead
-        
-        # Generate the N-step ahead forecast using the model we just fitted
+    def run_backtest(self, full_data, train_end_idx):
+        """
+        Override the master loop entirely for MGARCH models.
+        Uses R's native n.roll mechanism for 1-step-ahead conditional forecasts.
+        """
+        self.reset()
+
+        test_data = full_data.iloc[train_end_idx:]
+        n_test = len(test_data)
+
+        if self.window_type == 'rolling':
+            # For rolling: use a window of size window_size ending at the end of full_data
+            start_idx = train_end_idx - self.window_size
+            r_data = full_data[["r_CNY", "r_CNH"]].iloc[start_idx:train_end_idx + n_test].dropna()
+            n_oos = n_test  # out.sample count relative to this slice
+        else:
+            # Static and expanding both use all data from the start
+            r_data = full_data[["r_CNY", "r_CNH"]].iloc[:train_end_idx + n_test].dropna()
+            n_oos = n_test
+
+        ro.globalenv["returns_data"] = pandas2ri.py2rpy(r_data)
+        ro.globalenv["n_oos"] = n_oos
+
         ro.r(f"""
-            fcst <- dccforecast({self.r_fit_name}, n.ahead = n_ahead)
-            
-            # rcov(fcst) returns a list. [[1]] grabs the array of covariance matrices
-            fcst_cov <- rcov(fcst)[[1]]
-            
-            h_mgarch <- rep(0, n_ahead)
-            for (i in 1:n_ahead) {{
-                h_mgarch[i] <- fcst_cov[1, 2, i] / fcst_cov[2, 2, i]
+            uspec <- ugarchspec(
+                variance.model = list(model = "sGARCH", garchOrder = c(1, 1)),
+                mean.model     = list(armaOrder = c(0, 0), include.mean = TRUE),
+                distribution.model = "norm"
+            )
+            mspec <- multispec(replicate(2, uspec))
+            spec <- dccspec(uspec = mspec, dccOrder = c(1, 1),
+                            model = "{self.mgarch_type}", distribution = "mvnorm")
+
+            {self.r_fit_name} <- dccfit(spec, data = returns_data,
+                                        out.sample = n_oos,
+                                        fit.control = list(eval.se = FALSE))
+
+            fcst <- dccforecast({self.r_fit_name}, n.ahead = 1, n.roll = n_oos - 1)
+
+            # Extract 1-step-ahead hedge ratios from each rolling forecast
+            h_mgarch <- rep(0, n_oos)
+            for (i in 1:n_oos) {{
+                cov_i <- rcov(fcst)[[i]]
+                h_mgarch[i] <- cov_i[1, 2, 1] / cov_i[2, 2, 1]
             }}
+
+            # Extract model parameters
+            cfs <- coef({self.r_fit_name})
+            cf_names <- names(cfs)
+            cf_vals <- as.numeric(cfs)
+            corrs <- rcor({self.r_fit_name})
+            static_corr <- corrs[1, 2, 1]
         """)
 
-        # Pull the array of dynamic hedge ratios back into Python
         h_array = np.array(ro.r("h_mgarch"))
-        
-        # Because MGARCH generates an array of ratios (one for each step), we use extend()
         self.hedge_ratio_history.extend(h_array.tolist())
 
-        # Calculate Hedged PnL
-        r_test_cny = test_step_data["r_CNY"].values
-        r_test_cnh = test_step_data["r_CNH"].values
+        names = np.array(ro.globalenv["cf_names"])
+        vals = np.array(ro.globalenv["cf_vals"])
+        self.latest_params = dict(zip(names, vals))
+        self.static_corr = ro.globalenv["static_corr"][0]
 
+        r_test_cny = test_data["r_CNY"].values
+        r_test_cnh = test_data["r_CNH"].values
         return r_test_cny - h_array * r_test_cnh
 
     def get_hedge_info(self):

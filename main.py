@@ -26,9 +26,9 @@ if __name__ == "__main__":
         OLSHedgeModel(window_type='expanding', refit_step=4), 
         VECMHedgeModel(window_type='static', max_lags=VECM_MAX_LAGS),
         VECMHedgeModel(window_type='rolling', window_size=104, refit_step=4, max_lags=VECM_MAX_LAGS),
+        VECMHedgeModel(window_type='expanding', refit_step=4, max_lags=VECM_MAX_LAGS),
         CCCHedgeModel(window_type='static'),
         CCCHedgeModel(window_type='rolling', window_size=104, refit_step=4),
-        CCCHedgeModel(window_type='expanding', refit_step=4),
         DCCHedgeModel(window_type='static'),
         DCCHedgeModel(window_type='rolling', window_size=104, refit_step=4),
         # PathSigHedgeModel(window=4, depth=3)
@@ -38,7 +38,7 @@ if __name__ == "__main__":
     for model in models:
         model.fit(train_data)
 
-    # 5. Run Diagnostics (Example: VECM residuals)
+    # 5. Run Diagnostics (optional)
     vecm_model = models[3] 
     run_residual_diagnostics(vecm_model.name, vecm_model.get_residuals())
 
