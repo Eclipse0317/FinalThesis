@@ -38,27 +38,6 @@ class BaseMGARCHModel(BaseHedgeModel):
         self.r_fit_name = f"fit_{id(self)}"
 
     def fit(self, train_data):
-        # Use the pre-calculated returns directly from data loader
-        r_train = train_data[["r_CNY", "r_CNH"]].dropna()
-        
-        ro.globalenv["returns"] = pandas2ri.py2rpy(r_train)
-        
-        # Fit the model and store it in R's global environment under our unique name
-        ro.r(f"""
-            uspec <- ugarchspec(
-                variance.model = list(model = "sGARCH", garchOrder = c(1, 1)),
-                mean.model     = list(armaOrder = c(0, 0), include.mean = TRUE),
-                distribution.model = "norm"
-            )
-            mspec <- multispec(replicate(2, uspec))
-            
-            spec <- dccspec(uspec = mspec, dccOrder = c(1, 1), 
-                            model = "{self.mgarch_type}", distribution = "mvnorm")
-            
-            {self.r_fit_name} <- dccfit(spec, data = returns, fit.control = list(eval.se = FALSE))
-        """)
-
-    def fit(self, train_data):
         r_train = train_data[["r_CNY", "r_CNH"]].dropna()
         ro.globalenv["returns"] = pandas2ri.py2rpy(r_train)
         
