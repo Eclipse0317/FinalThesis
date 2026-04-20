@@ -46,6 +46,6 @@ if __name__ == "__main__":
     final_results = evaluate_out_of_sample(weekly_data, n_train, models, True)
 
     # 7. Run Robustness Checks
-    # run_robustness_checks(weekly_data, models, splits=ROBUSTNESS_SPLITS)
+    run_robustness_checks(weekly_data, models, splits=ROBUSTNESS_SPLITS)
     
     print("\nAnalysis Complete!")
