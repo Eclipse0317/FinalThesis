@@ -14,6 +14,13 @@ class BaseHedgeModel:
         self.refit_step = refit_step
         self.hedge_ratio_history = []
 
+    def reset(self):
+        """
+        Clears internal state to prevent contamination across different backtests 
+        (e.g., between the main evaluation and robustness splits).
+        """
+        self.hedge_ratio_history = []
+
     def fit(self, train_data):
         """Trains the model on a specific slice of data."""
         raise NotImplementedError("Subclasses must implement fit()")
@@ -48,6 +55,8 @@ class BaseHedgeModel:
         The Master Loop: Written ONCE, inherited by all models.
         Handles data slicing and routing for out-of-sample evaluation.
         """
+        self.reset()
+        
         test_data = full_data.iloc[train_end_idx:]
         n_test = len(test_data)
         out_of_sample_pnl = []

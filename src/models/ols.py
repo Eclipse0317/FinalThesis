@@ -13,7 +13,7 @@ class OLSHedgeModel(BaseHedgeModel):
         
         # Calculate static hedge ratio
         cov_matrix = np.cov(r_train_cny, r_train_cnh)
-        self.h_ols = cov_matrix[0, 1] / np.var(r_train_cnh)
+        self.h_ols = cov_matrix[0, 1] / np.var(r_train_cnh, ddof=1)
 
         # Track the ratio over time
         self.hedge_ratio_history.append(self.h_ols)
