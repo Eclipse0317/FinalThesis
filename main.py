@@ -29,8 +29,8 @@ if __name__ == "__main__":
         CCCHedgeModel(window_type='static'),
         CCCHedgeModel(window_type='rolling', window_size=104, refit_step=4),
         CCCHedgeModel(window_type='expanding', refit_step=4),
-        # DCCHedgeModel(window_type='static'),
-        # DCCHedgeModel(window_type='rolling', window_size=208, refit_step=4),
+        DCCHedgeModel(window_type='static'),
+        DCCHedgeModel(window_type='rolling', window_size=104, refit_step=4),
         # PathSigHedgeModel(window=4, depth=3)
     ]
 
@@ -43,9 +43,9 @@ if __name__ == "__main__":
     run_residual_diagnostics(vecm_model.name, vecm_model.get_residuals())
 
     # 6. Evaluate Out-of-Sample Performance
-    final_results = evaluate_out_of_sample(weekly_data, n_train, models)
+    final_results = evaluate_out_of_sample(weekly_data, n_train, models, True)
 
     # 7. Run Robustness Checks
-    run_robustness_checks(weekly_data, models, splits=ROBUSTNESS_SPLITS)
+    # run_robustness_checks(weekly_data, models, splits=ROBUSTNESS_SPLITS)
     
     print("\nAnalysis Complete!")

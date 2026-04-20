@@ -34,7 +34,7 @@ class BaseHedgeModel:
         Returns a string containing key fitted parameters 
         (e.g., DCC a/b values, VECM lags).
         """
-        raise NotImplementedError("Subclasses must implement get_model_attributes()")
+        return "-"
 
     def get_hedge_info(self):
         """

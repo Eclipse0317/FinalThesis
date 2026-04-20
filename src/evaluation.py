@@ -8,7 +8,7 @@ It leverages the internal backtest engine of BaseHedgeModel.
 import numpy as np
 import pandas as pd
 
-def evaluate_out_of_sample(full_data, train_end_idx, models_to_test):
+def evaluate_out_of_sample(full_data, train_end_idx, models_to_test, print_attributes=False):
     """
     Takes a list of initialized models, triggers their internal backtests,
     and calculates Hedging Efficiency (HE).
@@ -21,6 +21,8 @@ def evaluate_out_of_sample(full_data, train_end_idx, models_to_test):
         The index where the training period ends and the out-of-sample period begins.
     models_to_test : list
         A list of initialized model objects.
+    print_attributes : bool
+        If True, fetches and prints model-specific attributes (e.g., DCC a/b, VECM lags).
         
     Returns:
     --------
@@ -30,41 +32,51 @@ def evaluate_out_of_sample(full_data, train_end_idx, models_to_test):
     r_test_cny = test_data["r_CNY"].values
     var_unhedged = np.var(r_test_cny)
 
-    print(f"\n{'='*80}")
+    # Dynamically size the terminal separator line based on the columns
+    sep_len = 105 if print_attributes else 80
+
+    print(f"\n{'='*sep_len}")
     print(f"Out-of-Sample Hedging Efficiency Comparison (N={len(test_data)})")
     print(f"{'='*80}")
     
     summary = {}
 
     for model in models_to_test:
-        # 1. Trigger the master backtest loop (this handles fitting and predicting)
         pnl = model.run_backtest(full_data, train_end_idx)
-        
-        # 2. Get Hedge Ratio Info (Dynamic or Static)
         h_info = model.get_hedge_info()
         
-        # 3. Calculate Hedging Efficiency
         var_hedged = np.var(pnl)
         he = 1 - (var_hedged / var_unhedged)
         
-        # 4. Store the results
-        summary[model.name] = {
-            "Hedge Ratio / Setup": h_info,
-            "Hedging Efficiency": he,
-            "Variance": var_hedged 
-        }
+        if print_attributes:
+            model_attrs = model.get_model_attributes()
+            summary[model.name] = {
+                "Hedge Ratio": h_info,
+                "Model Attributes": model_attrs,
+                "HE": he
+            }
+        else:
+            summary[model.name] = {
+                "Hedge Ratio": h_info,
+                "HE": he
+            }
 
-    # Format and print the table
     summary_df = pd.DataFrame.from_dict(summary, orient="index")
     
-    print(f"{'Strategy':<30} {'Hedge Ratio / Setup':>30} {'HE':>10}")
-    print("-" * 80)
-    for index, row in summary_df.iterrows():
-        print(f"  {index:<28} {str(row['Hedge Ratio / Setup']):>30} {row['Hedging Efficiency']:>10.4f}")
-    
-    # Print the unhedged baseline for reference
-    print("-" * 80)
-    print(f"  {'Unhedged Baseline':<28} {'None':>30} {0.0:>10.4f}")
+    if print_attributes:
+        print(f"{'Strategy':<30} {'Hedge Ratio':>25} {'Model Attributes':>30} {'HE':>10}")
+        print("-" * sep_len)
+        for index, row in summary_df.iterrows():
+            print(f"  {index:<28} {str(row['Hedge Ratio']):>25} {str(row['Model Attributes']):>30} {row['HE']:>10.4f}")
+        print("-" * sep_len)
+        print(f"  {'Unhedged Baseline':<28} {'None':>25} {'-':>30} {0.0:>10.4f}")
+    else:
+        print(f"{'Strategy':<30} {'Hedge Ratio':>30} {'HE':>10}")
+        print("-" * sep_len)
+        for index, row in summary_df.iterrows():
+            print(f"  {index:<28} {str(row['Hedge Ratio']):>30} {row['HE']:>10.4f}")
+        print("-" * sep_len)
+        print(f"  {'Unhedged Baseline':<28} {'None':>30} {0.0:>10.4f}")
 
     return summary_df
 

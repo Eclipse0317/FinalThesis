@@ -58,6 +58,49 @@ class BaseMGARCHModel(BaseHedgeModel):
             {self.r_fit_name} <- dccfit(spec, data = returns, fit.control = list(eval.se = FALSE))
         """)
 
+    def fit(self, train_data):
+        r_train = train_data[["r_CNY", "r_CNH"]].dropna()
+        ro.globalenv["returns"] = pandas2ri.py2rpy(r_train)
+        
+        ro.r(f"""
+            uspec <- ugarchspec(
+                variance.model = list(model = "sGARCH", garchOrder = c(1, 1)),
+                mean.model     = list(armaOrder = c(0, 0), include.mean = TRUE),
+                distribution.model = "norm"
+            )
+            mspec <- multispec(replicate(2, uspec))
+            
+            spec <- dccspec(uspec = mspec, dccOrder = c(1, 1), 
+                            model = "{self.mgarch_type}", distribution = "mvnorm")
+            
+            {self.r_fit_name} <- dccfit(spec, data = returns, fit.control = list(eval.se = FALSE))
+            
+            cfs <- coef({self.r_fit_name})
+            cf_names <- names(cfs)
+            cf_vals <- as.numeric(cfs)
+
+            # rcor returns an array of shape (2, 2, T). We just grab the [1, 2] element from the first time step.
+            corrs <- rcor({self.r_fit_name})
+            static_corr <- corrs[1, 2, 1]
+        """)
+        
+        # Save the latest parameters to a Python dictionary
+        names = np.array(ro.globalenv["cf_names"])
+        vals = np.array(ro.globalenv["cf_vals"])
+        self.latest_params = dict(zip(names, vals))
+        self.static_corr = ro.globalenv["static_corr"][0]
+
+    def get_model_attributes(self):
+        if not hasattr(self, 'latest_params'):
+            return "Not fitted yet"
+            
+        if self.mgarch_type == "DCC":
+            a = self.latest_params.get('[Joint]dcca1', np.nan)
+            b = self.latest_params.get('[Joint]dccb1', np.nan)
+            return f"a={a:.4f}, b={b:.4f}"
+        else:
+            return f"Static Corr={self.static_corr:.4f}"
+
     def predict_step(self, test_step_data):
         # Tell R exactly how many steps ahead we need to forecast for this chunk
         n_ahead = len(test_step_data)

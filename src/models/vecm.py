@@ -36,6 +36,15 @@ class VECMHedgeModel(BaseHedgeModel):
             print(f"\n[{self.name}] Fitted with lag={self.chosen_lag}")
             print(f"[{self.name}] Cointegration vector beta: {self.result.beta.flatten()}")
 
+    def get_model_attributes(self):
+        if self.chosen_lag is not None:
+            # The alpha attribute is a matrix where row 0 is CNY and row 1 is CNH
+            alpha_cny = self.result.alpha[0, 0] if self.result is not None else np.nan
+            alpha_cnh = self.result.alpha[1, 0] if self.result is not None else np.nan
+            
+            return f"Lag={self.chosen_lag}, α_cny={alpha_cny:.4f}, α_cnh={alpha_cnh:.4f}"
+        return "Not fitted yet"
+
     def predict_step(self, test_step_data):
         r_test_cny = test_step_data["r_CNY"].values
         r_test_cnh = test_step_data["r_CNH"].values
