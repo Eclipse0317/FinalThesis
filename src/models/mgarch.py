@@ -25,8 +25,6 @@ except Exception as e:
 class BaseMGARCHModel(BaseHedgeModel):
     """
     A parent class for R-based MGARCH models. 
-    It leverages the Python-side BaseHedgeModel for rolling windows, 
-    using R purely for fitting (dccfit) and forecasting (dccforecast).
     """
     def __init__(self, name, mgarch_type, window_type='static', window_size=None, refit_step=1):
         # Pass the rolling config up to the Python master loop
@@ -81,69 +79,98 @@ class BaseMGARCHModel(BaseHedgeModel):
             return f"Static Corr={self.static_corr:.4f}"
 
     def run_backtest(self, full_data, train_end_idx):
-        """
-        Override the master loop entirely for MGARCH models.
-        Uses R's native n.roll mechanism for 1-step-ahead conditional forecasts.
-        """
         self.reset()
 
         test_data = full_data.iloc[train_end_idx:]
         n_test = len(test_data)
-
-        if self.window_type == 'rolling':
-            # For rolling: use a window of size window_size ending at the end of full_data
-            start_idx = train_end_idx - self.window_size
-            r_data = full_data[["r_CNY", "r_CNH"]].iloc[start_idx:train_end_idx + n_test].dropna()
-            n_oos = n_test  # out.sample count relative to this slice
-        else:
-            # Static and expanding both use all data from the start
-            r_data = full_data[["r_CNY", "r_CNH"]].iloc[:train_end_idx + n_test].dropna()
-            n_oos = n_test
+        r_data = full_data[["r_CNY", "r_CNH"]].dropna()
 
         ro.globalenv["returns_data"] = pandas2ri.py2rpy(r_data)
-        ro.globalenv["n_oos"] = n_oos
+        ro.globalenv["n_train"] = train_end_idx
+        ro.globalenv["n_test"] = n_test
 
-        ro.r(f"""
-            uspec <- ugarchspec(
-                variance.model = list(model = "sGARCH", garchOrder = c(1, 1)),
-                mean.model     = list(armaOrder = c(0, 0), include.mean = TRUE),
-                distribution.model = "norm"
-            )
-            mspec <- multispec(replicate(2, uspec))
-            spec <- dccspec(uspec = mspec, dccOrder = c(1, 1),
-                            model = "{self.mgarch_type}", distribution = "mvnorm")
+        if self.window_type == 'static':
+            # Static: fit once on training data, roll conditional variances forward
+            ro.r(f"""
+                uspec <- ugarchspec(
+                    variance.model = list(model = "sGARCH", garchOrder = c(1, 1)),
+                    mean.model     = list(armaOrder = c(0, 0), include.mean = TRUE),
+                    distribution.model = "norm"
+                )
+                mspec <- multispec(replicate(2, uspec))
+                spec <- dccspec(uspec = mspec, dccOrder = c(1, 1),
+                                model = "{self.mgarch_type}", distribution = "mvnorm")
 
-            {self.r_fit_name} <- dccfit(spec, data = returns_data,
-                                        out.sample = n_oos,
-                                        fit.control = list(eval.se = FALSE))
+                {self.r_fit_name} <- dccfit(spec, data = returns_data,
+                                            out.sample = n_test,
+                                            fit.control = list(eval.se = FALSE))
 
-            fcst <- dccforecast({self.r_fit_name}, n.ahead = 1, n.roll = n_oos - 1)
+                fcst <- dccforecast({self.r_fit_name}, n.ahead = 1, n.roll = n_test - 1)
 
-            # Extract 1-step-ahead hedge ratios from each rolling forecast
-            h_mgarch <- rep(0, n_oos)
-            for (i in 1:n_oos) {{
-                cov_i <- rcov(fcst)[[i]]
-                h_mgarch[i] <- cov_i[1, 2, 1] / cov_i[2, 2, 1]
-            }}
+                h_mgarch <- rep(0, n_test)
+                for (i in 1:n_test) {{
+                    cov_i <- rcov(fcst)[[i]]
+                    h_mgarch[i] <- cov_i[1, 2, 1] / cov_i[2, 2, 1]
+                }}
 
-            # Extract model parameters
-            cfs <- coef({self.r_fit_name})
-            cf_names <- names(cfs)
-            cf_vals <- as.numeric(cfs)
-            corrs <- rcor({self.r_fit_name})
-            static_corr <- corrs[1, 2, 1]
-        """)
+                cfs <- coef({self.r_fit_name})
+                cf_names <- names(cfs)
+                cf_vals <- as.numeric(cfs)
+                corrs <- rcor({self.r_fit_name})
+                static_corr <- corrs[1, 2, 1]
+            """)
+        else:
+            # Rolling or expanding: use dccroll to periodically re-estimate parameters
+            refit_window = "moving" if self.window_type == "rolling" else "recursive"
+            ro.globalenv["refit_every"] = self.refit_step
+            ro.globalenv["refit_window"] = refit_window
+
+            ro.r(f"""
+                uspec <- ugarchspec(
+                    variance.model = list(model = "sGARCH", garchOrder = c(1, 1)),
+                    mean.model     = list(armaOrder = c(0, 0), include.mean = TRUE),
+                    distribution.model = "norm"
+                )
+                mspec <- multispec(replicate(2, uspec))
+                spec <- dccspec(uspec = mspec, dccOrder = c(1, 1),
+                                model = "{self.mgarch_type}", distribution = "mvnorm")
+
+                {self.r_fit_name} <- dccroll(
+                    spec, data = returns_data,
+                    n.ahead = 1,
+                    forecast.length = n_test,
+                    refit.every = refit_every,
+                    refit.window = refit_window,
+                    fit.control = list(eval.se = FALSE)
+                )
+
+                roll_cov <- rcov({self.r_fit_name})
+                n_fcst <- dim(roll_cov)[3]
+                h_mgarch <- rep(0, n_fcst)
+                for (i in 1:n_fcst) {{
+                    h_mgarch[i] <- roll_cov[1, 2, i] / roll_cov[2, 2, i]
+                }}
+
+                cfs <- coef({self.r_fit_name})
+                cf_names <- names(cfs)
+                cf_vals <- as.numeric(cfs)
+                corrs <- rcor({self.r_fit_name})
+                static_corr <- corrs[1, 2, 1]
+            """)
 
         h_array = np.array(ro.r("h_mgarch"))
         self.hedge_ratio_history.extend(h_array.tolist())
 
-        names = np.array(ro.globalenv["cf_names"])
-        vals = np.array(ro.globalenv["cf_vals"])
-        self.latest_params = dict(zip(names, vals))
-        self.static_corr = ro.globalenv["static_corr"][0]
+        try:
+            nm = list(ro.r("names(cfs)"))
+            vl = list(ro.r("as.numeric(cf_vals)"))
+            self.latest_params = dict(zip(nm, vl))
+        except Exception:
+            self.latest_params = {}
+        self.static_corr = float(ro.r("static_corr")[0])
 
-        r_test_cny = test_data["r_CNY"].values
-        r_test_cnh = test_data["r_CNH"].values
+        r_test_cny = test_data["r_CNY"].values[:len(h_array)]
+        r_test_cnh = test_data["r_CNH"].values[:len(h_array)]
         return r_test_cny - h_array * r_test_cnh
 
     def get_hedge_info(self):

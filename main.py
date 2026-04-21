@@ -2,7 +2,7 @@ import warnings
 from statsmodels.tools.sm_exceptions import ValueWarning
 warnings.filterwarnings("ignore", category=ValueWarning)
 
-from src.config import TRAIN_SPLIT, ROBUSTNESS_SPLITS, VECM_MAX_LAGS
+from src.config import TRAIN_SPLIT, ROBUSTNESS_SPLITS, VECM_MAX_LAGS, GARCH_REFIT_EVERY, REFIT_STEP
 from src.data_loader import load_data
 from src.models.ols import OLSHedgeModel
 from src.models.vecm import VECMHedgeModel
@@ -22,15 +22,17 @@ if __name__ == "__main__":
     # 3. Initialize Models
     models = [
         OLSHedgeModel(window_type='static'),
-        OLSHedgeModel(window_type='rolling', window_size=104, refit_step=4),
-        OLSHedgeModel(window_type='expanding', refit_step=4), 
+        OLSHedgeModel(window_type='rolling', window_size=104, refit_step=REFIT_STEP),
+        OLSHedgeModel(window_type='expanding', refit_step=REFIT_STEP), 
         VECMHedgeModel(window_type='static', max_lags=VECM_MAX_LAGS),
-        VECMHedgeModel(window_type='rolling', window_size=104, refit_step=4, max_lags=VECM_MAX_LAGS),
-        VECMHedgeModel(window_type='expanding', refit_step=4, max_lags=VECM_MAX_LAGS),
+        VECMHedgeModel(window_type='rolling', window_size=104, refit_step=REFIT_STEP, max_lags=VECM_MAX_LAGS),
+        VECMHedgeModel(window_type='expanding', refit_step=REFIT_STEP, max_lags=VECM_MAX_LAGS),
         CCCHedgeModel(window_type='static'),
-        CCCHedgeModel(window_type='rolling', window_size=104, refit_step=4),
+        CCCHedgeModel(window_type='rolling', window_size=104, refit_step=GARCH_REFIT_EVERY),
+        CCCHedgeModel(window_type='expanding', refit_step=GARCH_REFIT_EVERY),
         DCCHedgeModel(window_type='static'),
-        DCCHedgeModel(window_type='rolling', window_size=104, refit_step=4),
+        DCCHedgeModel(window_type='rolling', window_size=104, refit_step=GARCH_REFIT_EVERY),
+        DCCHedgeModel(window_type='expanding', refit_step=GARCH_REFIT_EVERY),
         # PathSigHedgeModel(window=4, depth=3)
     ]
 

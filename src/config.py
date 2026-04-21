@@ -28,6 +28,9 @@ ROBUSTNESS_SPLITS = [0.6, 0.8]  # Splits for robustness checks
 # 3. Model Hyperparameters
 # =========================================================
 
+# --- General Settings ---
+REFIT_STEP = 4
+
 # --- VECM Settings ---
 VECM_MAX_LAGS = 12
 
