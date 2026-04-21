@@ -71,25 +71,31 @@ class PathSigHedgeModel(BaseHedgeModel):
         prices_cny, prices_cnh : 1-D arrays
             Raw price levels, length N.
         r_cnh : 1-D array
-            Log returns of CNH, length N.  The first (sig_window + 1)
-            entries are consumed by the lookback and cannot be predicted.
+            Log returns of CNH.  May be length N (DataFrame column) or
+            N-1 (from np.diff).  When length N, element [t] is the
+            return at price index t; when length N-1, element [t] is
+            the return from price[t] to price[t+1].
 
         Returns
         -------
         X : ndarray of shape (n_valid, n_features)
-        valid_idx : ndarray of integer indices into the input arrays
+        valid_idx : ndarray of integer indices into the *return* array
         """
         W = self.sig_window
-        n = len(prices_cny)
+        n_prices = len(prices_cny)
+        n_returns = len(r_cnh)
+
         sig_list = []
         valid_idx = []
 
-        for t in range(W + 1, n):
-            # Use prices [t-W-1 .. t-1] inclusive  →  W+1 points, W intervals
-            # This avoids look-ahead: price at t is NOT included
+        # Signature at step t uses prices [t-W : t+1] (W+1 points).
+        # The corresponding return index is t (in the return array).
+        # We need t-W >= 0 for the price lookback and t < n_returns.
+        for t in range(W, n_returns):
+            # Prices [t-W .. t] inclusive → W+1 points, no look-ahead
             sig = self._build_signature(
-                prices_cny[t - W - 1: t],
-                prices_cnh[t - W - 1: t]
+                prices_cny[t - W: t + 1],
+                prices_cnh[t - W: t + 1]
             )
             sig_list.append(sig)
             valid_idx.append(t)
@@ -162,27 +168,19 @@ class PathSigHedgeModel(BaseHedgeModel):
         prices_cny = np.concatenate([self._price_tail["CNY"], test_step_data["CNY"].values])
         prices_cnh = np.concatenate([self._price_tail["CNH"], test_step_data["CNH"].values])
 
-        # r_CNH needs the same prepend treatment — but we only need it
-        # for alignment, not as a target.  Compute returns on the joined
-        # price array so indices stay consistent.
+        # Compute returns on the joined price array.
+        # np.diff produces (len-1) returns; r[i] = return from price[i] to price[i+1].
         r_cnh_full = np.diff(np.log(prices_cnh)) * 100
         r_cny_full = np.diff(np.log(prices_cny)) * 100
 
-        # The tail has (sig_window + 1) prices, producing (sig_window)
-        # returns when differenced.  The test returns start at index
-        # sig_window in r_*_full.
-        tail_returns = self.sig_window  # number of return observations from tail
-
         X_full, valid_idx = self._build_features(prices_cny, prices_cnh, r_cnh_full)
 
-        # Map valid_idx back: indices >= tail_returns correspond to
-        # actual test observations.  The offset is because r_*_full[0]
-        # is the return between tail[-1] and test[0], and the first
-        # (sig_window) returns come from within the tail + overlap.
-        # valid_idx is relative to r_*_full, and test returns start at
-        # index = sig_window in r_*_full (since tail had sig_window+1 prices
-        # → sig_window returns, then test returns follow).
-        test_mask = valid_idx >= tail_returns
+        # The tail has (sig_window + 1) prices → sig_window returns from
+        # np.diff.  Return indices 0..(sig_window-1) are intra-tail or
+        # tail-to-test transitions.  The first pure test return is at
+        # index sig_window in r_*_full.
+        first_test_return_idx = self.sig_window
+        test_mask = valid_idx >= first_test_return_idx
         X_test = X_full[test_mask]
         y_test = r_cny_full[valid_idx[test_mask]]
 
