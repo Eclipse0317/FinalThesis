@@ -125,6 +125,9 @@ class BaseMGARCHModel(BaseHedgeModel):
             ro.globalenv["refit_every"] = self.refit_step
             ro.globalenv["refit_window"] = refit_window
 
+            if self.window_type == "rolling":
+                ro.globalenv["window_size"] = self.window_size
+
             ro.r(f"""
                 uspec <- ugarchspec(
                     variance.model = list(model = "sGARCH", garchOrder = c(1, 1)),
@@ -141,6 +144,7 @@ class BaseMGARCHModel(BaseHedgeModel):
                     forecast.length = n_test,
                     refit.every = refit_every,
                     refit.window = refit_window,
+                    window.size = window_size, 
                     fit.control = list(eval.se = FALSE)
                 )
 

@@ -28,10 +28,10 @@ if __name__ == "__main__":
         VECMHedgeModel(window_type='rolling', window_size=104, refit_step=REFIT_STEP, max_lags=VECM_MAX_LAGS),
         VECMHedgeModel(window_type='expanding', refit_step=REFIT_STEP, max_lags=VECM_MAX_LAGS),
         CCCHedgeModel(window_type='static'),
-        CCCHedgeModel(window_type='rolling', window_size=104, refit_step=GARCH_REFIT_EVERY),
+        CCCHedgeModel(window_type='rolling', window_size=208, refit_step=GARCH_REFIT_EVERY),
         CCCHedgeModel(window_type='expanding', refit_step=GARCH_REFIT_EVERY),
         DCCHedgeModel(window_type='static'),
-        DCCHedgeModel(window_type='rolling', window_size=104, refit_step=GARCH_REFIT_EVERY),
+        DCCHedgeModel(window_type='rolling', window_size=208, refit_step=GARCH_REFIT_EVERY),
         DCCHedgeModel(window_type='expanding', refit_step=GARCH_REFIT_EVERY),
         # PathSigHedgeModel(window=4, depth=3)
     ]
