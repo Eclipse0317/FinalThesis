@@ -4,20 +4,17 @@ warnings.filterwarnings("ignore", category=ValueWarning)
 
 from src.config import TRAIN_SPLIT, ROBUSTNESS_SPLITS, VECM_MAX_LAGS, GARCH_REFIT_EVERY, REFIT_STEP
 from src.data_loader import load_data
-from src.eda import run_eda
 from src.models.ols import OLSHedgeModel
 from src.models.vecm import VECMHedgeModel
 from src.models.mgarch import CCCHedgeModel, DCCHedgeModel
 from src.models.path_sig import PathSigHedgeModel
 from src.diagnostics import run_residual_diagnostics
 from src.evaluation import evaluate_out_of_sample, run_robustness_checks
+from src.statistical_tests import run_all_statistical_tests
 
 if __name__ == "__main__":
     # 1. Load Data
     weekly_data = load_data()
-    
-    # (Optional: EDA)
-    # _ = run_eda(weekly_data)
 
     # 2. Split Data
     n_train = int(len(weekly_data) * TRAIN_SPLIT)
@@ -54,7 +51,12 @@ if __name__ == "__main__":
     # 6. Evaluate Out-of-Sample Performance
     final_results = evaluate_out_of_sample(weekly_data, n_train, models, True)
 
-    # 7. Run Robustness Checks
+    # 7. Statistical Tests & Plots
+    pnl_dict, dm_df, mean_df = run_all_statistical_tests(
+        weekly_data, n_train, models, output_dir="outputs"
+    )
+
+    # 8. Run Robustness Checks
     run_robustness_checks(weekly_data, models, splits=ROBUSTNESS_SPLITS)
     
     print("\nAnalysis Complete!")
