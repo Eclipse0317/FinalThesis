@@ -4,9 +4,11 @@ warnings.filterwarnings("ignore", category=ValueWarning)
 
 from src.config import TRAIN_SPLIT, ROBUSTNESS_SPLITS, VECM_MAX_LAGS, GARCH_REFIT_EVERY, REFIT_STEP
 from src.data_loader import load_data
+from src.eda import run_eda
 from src.models.ols import OLSHedgeModel
 from src.models.vecm import VECMHedgeModel
 from src.models.mgarch import CCCHedgeModel, DCCHedgeModel
+from src.models.path_sig import PathSigHedgeModel
 from src.diagnostics import run_residual_diagnostics
 from src.evaluation import evaluate_out_of_sample, run_robustness_checks
 
@@ -14,6 +16,9 @@ if __name__ == "__main__":
     # 1. Load Data
     weekly_data = load_data()
     
+    # (Optional: EDA)
+    # _ = run_eda(weekly_data)
+
     # 2. Split Data
     n_train = int(len(weekly_data) * TRAIN_SPLIT)
     train_data = weekly_data.iloc[:n_train]
@@ -30,10 +35,12 @@ if __name__ == "__main__":
         CCCHedgeModel(window_type='static'),
         CCCHedgeModel(window_type='rolling', window_size=208, refit_step=GARCH_REFIT_EVERY),
         CCCHedgeModel(window_type='expanding', refit_step=GARCH_REFIT_EVERY),
-        DCCHedgeModel(window_type='static'),
-        DCCHedgeModel(window_type='rolling', window_size=208, refit_step=GARCH_REFIT_EVERY),
-        DCCHedgeModel(window_type='expanding', refit_step=GARCH_REFIT_EVERY),
-        # PathSigHedgeModel(window=4, depth=3)
+        # DCCHedgeModel(window_type='static'),
+        # DCCHedgeModel(window_type='rolling', window_size=208, refit_step=GARCH_REFIT_EVERY),
+        # DCCHedgeModel(window_type='expanding', refit_step=GARCH_REFIT_EVERY),
+        PathSigHedgeModel(window_type='static'),
+        PathSigHedgeModel(window_type='rolling', window_size=208, refit_step=REFIT_STEP),
+        PathSigHedgeModel(window_type='expanding', refit_step=REFIT_STEP),
     ]
 
     # 4. Train Models
