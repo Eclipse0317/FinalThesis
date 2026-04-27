@@ -41,5 +41,5 @@ GARCH_REFIT_EVERY = 20
 # --- Path Signature Settings ---
 SIG_WINDOW = 3
 SIG_DEPTH = 2
-RIDGE_ALPHAS = [0.01, 0.1, 1.0, 10.0, 100.0]
+RIDGE_ALPHAS = [0.001, 0.01, 0.1, 1.0, 10.0, 100.0, 1000.0]
 RIDGE_CV_FOLDS = 5

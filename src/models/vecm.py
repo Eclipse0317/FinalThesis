@@ -14,7 +14,7 @@ class VECMHedgeModel(BaseHedgeModel):
 
     def fit(self, train_data):
         # VECM needs raw price levels to find cointegration, not log returns
-        data = train_data[["CNY", "CNH"]].dropna()
+        data = np.log(train_data[["CNY", "CNH"]]).dropna()
         
         # 1. Select Lags
         lag_order = select_order(data, maxlags=self.max_lags, deterministic="ci")

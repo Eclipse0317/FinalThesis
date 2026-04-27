@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import RidgeCV
+from sklearn.model_selection import TimeSeriesSplit
+from sklearn.preprocessing import StandardScaler
 import esig
 
 from .base import BaseHedgeModel
@@ -36,9 +38,11 @@ class PathSigHedgeModel(BaseHedgeModel):
     """
 
     def __init__(self, window=SIG_WINDOW, depth=SIG_DEPTH,
-                 window_type='static', window_size=None, refit_step=1):
+                 window_type='static', window_size=None, refit_step=1,
+                 use_scaler=False):
+        name = "PathSig-S" if use_scaler else "PathSig"
         super().__init__(
-            name="PathSig",
+            name=name,
             window_type=window_type,
             window_size=window_size,
             refit_step=refit_step
@@ -46,6 +50,10 @@ class PathSigHedgeModel(BaseHedgeModel):
         self.sig_window = window
         self.sig_depth = depth
         self.ridge_model = None
+        self.use_scaler = use_scaler
+        self.scaler = StandardScaler() if use_scaler else None
+
+        # Full signature dimension including depth-0 constant
         self.sig_dim = esig.sigdim(2, self.sig_depth)
 
     # ------------------------------------------------------------------
@@ -64,6 +72,8 @@ class PathSigHedgeModel(BaseHedgeModel):
     def _compute_signature(self, path):
         """
         Computes the truncated signature of a path.
+        KEEPS the depth-0 term (constant 1.0) so that when multiplied
+        by r_CNH, the first feature is just r_CNH itself.
         """
         return esig.stream2sig(path, self.sig_depth)
 
@@ -115,14 +125,17 @@ class PathSigHedgeModel(BaseHedgeModel):
 
         Z, y = self._build_features(r_cny, r_cnh)
 
-        # Ridge CV — no intercept, no standardisation
-        # The first column of Z is r_CNH itself (from depth-0 = 1),
-        # so beta_0 naturally estimates the OLS hedge ratio.
-        # Higher-order terms are shrunk toward zero by Ridge.
+        # Optionally standardise features
+        if self.use_scaler:
+            self.scaler = StandardScaler()
+            Z = self.scaler.fit_transform(Z)
+
+        # Ridge CV — no intercept
+        tscv = TimeSeriesSplit(n_splits=RIDGE_CV_FOLDS)
         self.ridge_model = RidgeCV(
             alphas=RIDGE_ALPHAS,
             fit_intercept=False,
-            cv=RIDGE_CV_FOLDS
+            cv=tscv
         )
         self.ridge_model.fit(Z, y)
 
@@ -151,7 +164,10 @@ class PathSigHedgeModel(BaseHedgeModel):
 
             # z_t = Sig(X_t) * r_t^{CNH}  — first element is just r_CNH
             z_t = sig * r_cnh[t]
-            predicted_cny = self.ridge_model.predict(z_t.reshape(1, -1))[0]
+            z_t = z_t.reshape(1, -1)
+            if self.use_scaler:
+                z_t = self.scaler.transform(z_t)
+            predicted_cny = self.ridge_model.predict(z_t)[0]
             pnl.append(r_cny[t] - predicted_cny)
 
             # Track effective hedge ratio
@@ -171,7 +187,8 @@ class PathSigHedgeModel(BaseHedgeModel):
         if self.ridge_model is not None:
             alpha = self.ridge_model.alpha_
             beta_0 = self.ridge_model.coef_[0]
-            return f"W={self.sig_window}, D={self.sig_depth}, λ={alpha:.2f}, β₀={beta_0:.4f}"
+            scaled = "scaled" if self.use_scaler else "raw"
+            return f"W={self.sig_window}, D={self.sig_depth}, λ={alpha:.2f}, β₀={beta_0:.4f}, {scaled}"
         return "Not fitted yet"
 
     def get_residuals(self):
