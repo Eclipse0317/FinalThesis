@@ -1,17 +1,26 @@
 import numpy as np
 import pandas as pd
 
+# Default hedge ratio bounds — applied to all dynamic models
+H_MIN_DEFAULT = 0.0
+H_MAX_DEFAULT = 1.0
+
+
 class BaseHedgeModel:
-    def __init__(self, name, window_type='static', window_size=None, refit_step=1):
+    def __init__(self, name, window_type='static', window_size=None, refit_step=1,
+                 h_min=H_MIN_DEFAULT, h_max=H_MAX_DEFAULT):
         """
         window_type: 'static', 'rolling', or 'expanding'
         window_size: Integer number of weeks for the lookback window (if 'rolling')
         refit_step: How often to recalculate the hedge ratio (e.g., 4 = every 4 weeks)
+        h_min, h_max: Bounds for clamping the hedge ratio to economically sensible values.
         """
         self.name = f"{name} ({window_type})"
         self.window_type = window_type
         self.window_size = window_size
         self.refit_step = refit_step
+        self.h_min = h_min
+        self.h_max = h_max
         self.hedge_ratio_history = []
 
     def reset(self):
@@ -20,6 +29,15 @@ class BaseHedgeModel:
         (e.g., between the main evaluation and robustness splits).
         """
         self.hedge_ratio_history = []
+
+    def _clamp_ratio(self, h):
+        """
+        Clamps a hedge ratio to [h_min, h_max] and records it.
+        Returns the clamped ratio.
+        """
+        h_clamped = np.clip(h, self.h_min, self.h_max)
+        self.hedge_ratio_history.append(h_clamped)
+        return h_clamped
 
     def fit(self, train_data):
         """Trains the model on a specific slice of data."""
@@ -100,5 +118,3 @@ class BaseHedgeModel:
         var_hedged = np.var(pnl)
         
         return 1 - (var_hedged / var_unhedged)
-
-

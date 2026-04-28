@@ -144,6 +144,8 @@ class PathSigHedgeModel(BaseHedgeModel):
         Generates hedged PnL for a test chunk.
 
         Prepends training tail for signature window continuity.
+        Computes the effective hedge ratio h_t from the signature,
+        clamps it via the base class, then applies it to produce PnL.
         """
         r_cny_test = test_step_data["r_CNY"].values
         r_cnh_test = test_step_data["r_CNH"].values
@@ -162,18 +164,14 @@ class PathSigHedgeModel(BaseHedgeModel):
             path = self._build_path(r_cny[t - W:t], r_cnh[t - W:t])
             sig = self._compute_signature(path)
 
-            # z_t = Sig(X_t) * r_t^{CNH}  — first element is just r_CNH
-            z_t = sig * r_cnh[t]
-            z_t = z_t.reshape(1, -1)
-            if self.use_scaler:
-                z_t = self.scaler.transform(z_t)
-            predicted_cny = self.ridge_model.predict(z_t)[0]
-            pnl.append(r_cny[t] - predicted_cny)
+            # h_t = β' · Sig(X_t) — the effective hedge ratio
+            h_t = np.dot(self.ridge_model.coef_, sig)
 
-            # Track effective hedge ratio
-            if abs(r_cnh[t]) > 1e-10:
-                h_t = predicted_cny / r_cnh[t]
-                self.hedge_ratio_history.append(h_t)
+            # Clamp and record via base class
+            h_t = self._clamp_ratio(h_t)
+
+            # Hedged PnL
+            pnl.append(r_cny[t] - h_t * r_cnh[t])
 
         return np.array(pnl)
 

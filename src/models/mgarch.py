@@ -2,7 +2,6 @@ import numpy as np
 import pandas as pd
 import warnings
 
-# Suppress rpy2 warnings that clutter the terminal
 warnings.filterwarnings("ignore", category=UserWarning, module="rpy2")
 
 import rpy2.robjects as ro
@@ -10,7 +9,6 @@ from rpy2.robjects import pandas2ri, numpy2ri
 from rpy2.robjects.packages import importr
 from .base import BaseHedgeModel  
 
-# Activate automatic conversions
 pandas2ri.activate()
 numpy2ri.activate()
 
@@ -23,16 +21,9 @@ except Exception as e:
 
 
 class BaseMGARCHModel(BaseHedgeModel):
-    """
-    A parent class for R-based MGARCH models. 
-    """
     def __init__(self, name, mgarch_type, window_type='static', window_size=None, refit_step=1):
-        # Pass the rolling config up to the Python master loop
         super().__init__(name=name, window_type=window_type, window_size=window_size, refit_step=refit_step)
-        self.mgarch_type = mgarch_type.upper()  # "CCC" or "DCC"
-        
-        # Create a unique variable name in the R environment to avoid collisions 
-        # if CCC and DCC are running simultaneously in the same pipeline.
+        self.mgarch_type = mgarch_type.upper()
         self.r_fit_name = f"fit_{id(self)}"
 
     def fit(self, train_data):
@@ -56,12 +47,10 @@ class BaseMGARCHModel(BaseHedgeModel):
             cf_names <- names(cfs)
             cf_vals <- as.numeric(cfs)
 
-            # rcor returns an array of shape (2, 2, T). We just grab the [1, 2] element from the first time step.
             corrs <- rcor({self.r_fit_name})
             static_corr <- corrs[1, 2, 1]
         """)
         
-        # Save the latest parameters to a Python dictionary
         names = np.array(ro.globalenv["cf_names"])
         vals = np.array(ro.globalenv["cf_vals"])
         self.latest_params = dict(zip(names, vals))
@@ -90,7 +79,6 @@ class BaseMGARCHModel(BaseHedgeModel):
         ro.globalenv["n_test"] = n_test
 
         if self.window_type == 'static':
-            # Static: fit once on training data, roll conditional variances forward
             ro.r(f"""
                 uspec <- ugarchspec(
                     variance.model = list(model = "sGARCH", garchOrder = c(1, 1)),
@@ -120,13 +108,13 @@ class BaseMGARCHModel(BaseHedgeModel):
                 static_corr <- corrs[1, 2, 1]
             """)
         else:
-            # Rolling or expanding: use dccroll to periodically re-estimate parameters
             refit_window = "moving" if self.window_type == "rolling" else "recursive"
             ro.globalenv["refit_every"] = self.refit_step
             ro.globalenv["refit_window"] = refit_window
 
             if self.window_type == "rolling":
                 ro.globalenv["window_size"] = self.window_size
+
 
             ro.r(f"""
                 uspec <- ugarchspec(
@@ -163,6 +151,9 @@ class BaseMGARCHModel(BaseHedgeModel):
             """)
 
         h_array = np.array(ro.r("h_mgarch"))
+        
+        # Clamp hedge ratios and record them
+        h_array = np.clip(h_array, self.h_min, self.h_max)
         self.hedge_ratio_history.extend(h_array.tolist())
 
         try:
@@ -183,8 +174,6 @@ class BaseMGARCHModel(BaseHedgeModel):
             return f"Dynamic (Avg: {avg_h:.4f})"
         return "N/A"
 
-
-# --- The Actual Models Used in main.py ---
 
 class CCCHedgeModel(BaseMGARCHModel):
     def __init__(self, window_type='static', window_size=None, refit_step=1):
